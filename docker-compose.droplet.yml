@@ -1,0 +1,40 @@
+version: '3.8'
+
+# Docker Compose configuration for DigitalOcean Droplet
+# This runs ONLY the backend, nginx is managed separately on the host
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: taniprad-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"  # Bind only to localhost, nginx will proxy
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - uploads:/tmp/uploads
+    networks:
+      - taniprad-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  uploads:
+    driver: local
+
+networks:
+  taniprad-network:
+    driver: bridge
