@@ -8,7 +8,7 @@ services:
   - name: backend
     dockerfile_path: Dockerfile
     github:
-      repo: <TWOJE_REPO>
+      repo: januszcieszynski/taniprad
       branch: main
       deploy_on_push: true
     http_port: 8080
@@ -27,7 +27,7 @@ services:
 static_sites:
   - name: frontend
     github:
-      repo: <TWOJE_REPO>
+      repo: januszcieszynski/taniprad
       branch: main
       deploy_on_push: true
     source_dir: /
