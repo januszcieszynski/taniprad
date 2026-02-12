@@ -518,8 +518,11 @@ header p {
 
 <script>
 // Konfiguracja API
-// Backend działa na porcie 8080
-const API_URL = 'http://localhost:8080';  // Backend API
+// W produkcji używamy relative path (nginx proxy przekierowuje /api do backendu)
+// W developmencie (localhost) łączymy się bezpośrednio z portem 8080
+const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:8080'
+  : '';  // Pusty string = używa tej samej domeny (nginx proxy)
 
 const fileInput = document.getElementById('fileInput');
 const selectedFile = document.getElementById('selectedFile');
