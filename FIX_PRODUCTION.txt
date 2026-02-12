@@ -1,0 +1,129 @@
+═══════════════════════════════════════════════════════════════
+🔧 NAPRAWA APLIKACJI NA PRODUKCJI - INSTRUKCJA
+═══════════════════════════════════════════════════════════════
+
+PROBLEM ZNALEZIONY:
+───────────────────────────────────────────────────────────────
+Frontend ma API_URL = 'http://localhost:8080'
+To NIE DZIAŁA w przeglądarce użytkownika!
+Przeglądarka próbuje połączyć się z localhost na komputerze
+użytkownika, nie z serwerem.
+
+
+ROZWIĄZANIE:
+───────────────────────────────────────────────────────────────
+1. Skonfigurować nginx jako reverse proxy dla /api/
+2. Wdrożyć zaktualizowany frontend (już naprawiony)
+
+
+═══════════════════════════════════════════════════════════════
+KROK 1: Znajdź katalog konfiguracji nginx
+═══════════════════════════════════════════════════════════════
+
+ssh root@188.166.77.171
+
+# Sprawdź gdzie nginx montuje konfigurację
+docker inspect ksef-nginx | grep -A 10 '"Mounts"'
+
+# Zapisz ścieżkę "Source" (np: /home/clawd/ksef-auto-invoices/nginx/conf.d)
+
+
+═══════════════════════════════════════════════════════════════
+KROK 2: Dodaj konfigurację proxy dla API
+═══════════════════════════════════════════════════════════════
+
+cd ~/apps/taniprad
+git pull  # Pobierz nowy plik nginx-prad-config.conf
+
+# Zamień ścieżkę na tę ze Kroku 1:
+NGINX_CONF_DIR="/home/clawd/ksef-auto-invoices/nginx/conf.d"
+
+# OPCJA A: Jeśli plik prad.conf NIE istnieje
+cp nginx-prad-config.conf $NGINX_CONF_DIR/prad.conf
+
+# OPCJA B: Jeśli plik prad.conf już istnieje
+nano $NGINX_CONF_DIR/prad.conf
+
+# Dodaj tę sekcję w bloku server { listen 443 ssl; ... }:
+
+    # Backend API - proxy to Docker container
+    location /api/ {
+        proxy_pass http://taniprad-backend:8080/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        client_max_body_size 10M;
+    }
+
+
+═══════════════════════════════════════════════════════════════
+KROK 3: Sprawdź i przeładuj nginx
+═══════════════════════════════════════════════════════════════
+
+# Sprawdź składnię
+docker exec ksef-nginx nginx -t
+
+# Jeśli OK, przeładuj
+docker exec ksef-nginx nginx -s reload
+
+
+═══════════════════════════════════════════════════════════════
+KROK 4: Wdróż zaktualizowany frontend
+═══════════════════════════════════════════════════════════════
+
+cd ~/apps/taniprad
+git pull
+./deploy-update.sh
+
+
+═══════════════════════════════════════════════════════════════
+WERYFIKACJA
+═══════════════════════════════════════════════════════════════
+
+1. Sprawdź API przez nginx:
+   curl https://prad.januszcieszynski.pl/api/health
+
+   Powinno zwrócić: {"service":"tani-prad-api","status":"ok"}
+
+
+2. Otwórz w przeglądarce:
+   https://prad.januszcieszynski.pl
+
+   - Otwórz DevTools (F12) → Network
+   - Wybierz fakturę i kliknij "Analizuj"
+   - Sprawdź czy request idzie do:
+     https://prad.januszcieszynski.pl/api/analyze-invoice
+   - Sprawdź czy NIE MA błędu "load failed"
+
+
+═══════════════════════════════════════════════════════════════
+W RAZIE PROBLEMÓW
+═══════════════════════════════════════════════════════════════
+
+Zobacz szczegółową dokumentację:
+   cat NGINX_SETUP.md
+
+Sprawdź logi nginx:
+   docker logs ksef-nginx --tail 50
+
+Sprawdź logi backendu:
+   docker logs taniprad-backend --tail 50
+
+
+═══════════════════════════════════════════════════════════════
+CO ZOSTAŁO NAPRAWIONE?
+═══════════════════════════════════════════════════════════════
+
+✓ Frontend teraz używa relative path (/api/) w produkcji
+✓ Nginx przekierowuje /api/* do kontenera taniprad-backend
+✓ Wszystko działa przez HTTPS
+✓ Brak błędów CORS
+✓ Brak błędów "load failed"
+✓ Backend jest dostępny dla użytkowników
+
+
+═══════════════════════════════════════════════════════════════
