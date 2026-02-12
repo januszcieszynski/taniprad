@@ -33,9 +33,31 @@ tani-prad/
 
 ## 🚀 Szybki start
 
+### ⚡ Najszybsza metoda (lokalne uruchomienie)
+
+```bash
+# 1. Uruchom aplikację
+./start.sh
+
+# 2. Otwórz w przeglądarce
+# Frontend: http://localhost:8000
+# Backend:  http://localhost:8080
+```
+
+```bash
+# Zatrzymaj aplikację
+./stop.sh
+```
+
+**Gotowe!** 🎉 Aplikacja działa lokalnie bez Dockera.
+
+---
+
+### 📦 Alternatywnie: Docker (deployment produkcyjny)
+
 ### Wymagania
 - Docker & Docker Compose
-- Klucz API Anthropic
+- (Opcjonalnie) Klucz API Anthropic
 
 ### Instalacja
 
@@ -44,7 +66,7 @@ tani-prad/
 cd tani-prad
 ```
 
-2. **Skonfiguruj klucz API**
+2. **Skonfiguruj klucz API** (opcjonalne)
 ```bash
 cp backend/.env.example backend/.env
 # Edytuj backend/.env i wpisz swój klucz API
@@ -326,8 +348,29 @@ Proprietary - Janusz Bryzek
 
 Janusz Bryzek - Poseł na Sejm RP
 
+## 🔧 Rozwiązywanie problemów
+
+### Problem: "load failed" przy dodawaniu faktury
+
+**Przyczyna:** Backend nie działa.
+
+**Rozwiązanie:**
+```bash
+./stop.sh   # Zatrzymaj
+./start.sh  # Uruchom ponownie
+```
+
+Szczegółowa dokumentacja: **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**
+
+### Inne problemy
+
+Zobacz pełną dokumentację rozwiązywania problemów:
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Wszystkie znane problemy i rozwiązania
+- **[URUCHOMIENIE.md](URUCHOMIENIE.md)** - Szczegółowa instrukcja uruchomienia
+
 ## 🤝 Wsparcie
 
 W razie pytań lub problemów:
+- Zobacz dokumentację w plikach `.md`
 - Stwórz issue na GitHub
 - Skontaktuj się mailowo

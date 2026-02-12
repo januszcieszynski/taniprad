@@ -570,10 +570,32 @@ uploadSection.addEventListener('drop', (e) => {
   }
 });
 
+// Sprawdź połączenie z backendem
+async function checkBackendHealth() {
+  try {
+    const response = await fetch(`${API_URL}/api/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(3000) // 3 sekundy timeout
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
 // Analiza faktury
 analyzeBtn.addEventListener('click', async () => {
   const file = fileInput.files[0];
   if (!file) return;
+
+  // Sprawdź czy backend działa
+  const backendHealthy = await checkBackendHealth();
+  if (!backendHealthy) {
+    alert('❌ Nie można połączyć się z serwerem!\n\n' +
+          'Upewnij się, że backend działa na porcie 8080.\n\n' +
+          'Uruchom w terminalu: ./start.sh');
+    return;
+  }
 
   // Ukryj upload section, pokaż loading
   uploadSection.classList.add('hidden');
@@ -627,7 +649,15 @@ analyzeBtn.addEventListener('click', async () => {
     analyzeBtn.disabled = false;
 
   } catch (error) {
-    alert(`Błąd: ${error.message}`);
+    console.error('Szczegóły błędu:', error);
+    let errorMessage = error.message;
+
+    // Dodaj bardziej szczegółowy komunikat dla typowych błędów
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      errorMessage = 'Nie można połączyć się z serwerem. Upewnij się, że backend działa na porcie 8080.';
+    }
+
+    alert(`Błąd: ${errorMessage}\n\nSprawdź konsolę przeglądarki (F12) aby zobaczyć więcej szczegółów.`);
     loading.classList.remove('visible');
     uploadSection.classList.remove('hidden');
     analyzeBtn.disabled = false;

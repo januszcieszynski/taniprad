@@ -282,10 +282,15 @@ def analyze_invoice():
     Endpoint do analizy faktury
     Akceptuje PDF lub zdjęcie, zwraca strukturyzowane dane i wyliczone oszczędności
     """
+    print("📨 Otrzymano request do /api/analyze-invoice")
+    print(f"   Method: {request.method}")
+    print(f"   Content-Type: {request.content_type}")
+    print(f"   Files: {list(request.files.keys())}")
 
     # Rate limiting
     client_ip = request.remote_addr
     if not check_rate_limit(client_ip):
+        print(f"⚠️  Rate limit exceeded for {client_ip}")
         return jsonify({
             'error': 'Zbyt wiele requestów. Spróbuj ponownie za chwilę.',
             'retry_after': 60
@@ -321,12 +326,17 @@ def analyze_invoice():
     try:
         # Parsuj fakturę w zależności od typu pliku
         invoice_data = None
+        print(f"🔍 Parsowanie pliku: {unique_filename}")
 
         if file_ext == 'pdf':
             # Parsuj PDF używając zaawansowanego parsera
             try:
                 invoice_data = parse_invoice(filepath)
+                print(f"✅ Faktura sparsowana: {invoice_data.get('numer_faktury', 'brak')}")
             except Exception as e:
+                print(f"❌ Błąd parsowania PDF: {e}")
+                import traceback
+                traceback.print_exc()
                 return jsonify({
                     'error': 'Nie udało się sparsować faktury PDF',
                     'details': str(e)
