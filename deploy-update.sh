@@ -94,15 +94,38 @@ sudo chmod -R 755 $FRONTEND_DIR
 echo -e "${GREEN}✅ Frontend zaktualizowany${NC}"
 
 echo ""
-echo -e "${BLUE}🔧 Sprawdzanie konfiguracji nginx...${NC}"
-if sudo nginx -t 2>&1 | grep -q "successful"; then
-    echo -e "${GREEN}✅ Konfiguracja nginx prawidłowa${NC}"
-    echo -e "${BLUE}🔄 Przeładowanie nginx...${NC}"
-    sudo systemctl reload nginx
-    echo -e "${GREEN}✅ Nginx przeładowany${NC}"
+echo -e "${BLUE}🔧 Sprawdzanie nginx...${NC}"
+
+# Sprawdź czy nginx działa jako systemd service czy w kontenerze
+if command -v nginx &> /dev/null && systemctl is-active --quiet nginx; then
+    # Nginx jako systemd service
+    if sudo nginx -t 2>&1 | grep -q "successful"; then
+        echo -e "${GREEN}✅ Konfiguracja nginx prawidłowa${NC}"
+        echo -e "${BLUE}🔄 Przeładowanie nginx...${NC}"
+        sudo systemctl reload nginx
+        echo -e "${GREEN}✅ Nginx przeładowany${NC}"
+    else
+        echo -e "${RED}❌ Błąd w konfiguracji nginx!${NC}"
+        sudo nginx -t
+    fi
+elif docker ps --format '{{.Names}}' | grep -q nginx; then
+    # Nginx w kontenerze Docker
+    NGINX_CONTAINER=$(docker ps --format '{{.Names}}' | grep nginx | head -1)
+    echo -e "${BLUE}Nginx działa w kontenerze: ${NGINX_CONTAINER}${NC}"
+
+    # Test konfiguracji w kontenerze
+    if docker exec $NGINX_CONTAINER nginx -t 2>&1 | grep -q "successful"; then
+        echo -e "${GREEN}✅ Konfiguracja nginx prawidłowa${NC}"
+        echo -e "${BLUE}🔄 Przeładowanie nginx...${NC}"
+        docker exec $NGINX_CONTAINER nginx -s reload
+        echo -e "${GREEN}✅ Nginx przeładowany${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Sprawdzam konfigurację nginx...${NC}"
+        docker exec $NGINX_CONTAINER nginx -t
+    fi
 else
-    echo -e "${RED}❌ Błąd w konfiguracji nginx!${NC}"
-    sudo nginx -t
+    echo -e "${YELLOW}⚠️  Nginx nie został znaleziony (ani jako service ani w kontenerze)${NC}"
+    echo -e "${YELLOW}    Frontend może nie działać poprawnie${NC}"
 fi
 
 echo ""
