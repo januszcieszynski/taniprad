@@ -1,0 +1,47 @@
+version: '3.8'
+
+# Docker Compose for droplet with existing nginx
+# This connects to your existing ksef-nginx network
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: taniprad-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"  # Bind to localhost (nginx will proxy)
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - uploads:/tmp/uploads
+    networks:
+      - taniprad-internal
+      - ksef-network  # Connect to existing nginx network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  uploads:
+    driver: local
+
+networks:
+  taniprad-internal:
+    driver: bridge
+  ksef-network:
+    external: true
+    # Update this name after checking your network:
+    # docker network ls
+    # docker inspect ksef-nginx | grep -A 5 "Networks"
+    name: ksef-auto-invoices_default
