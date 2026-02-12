@@ -39,7 +39,9 @@ Jeśli wolisz wykonać kroki ręcznie:
 #### 1. Zaloguj się na serwer
 ```bash
 ssh root@188.166.77.171
-cd /opt/taniprad
+cd ~/apps/taniprad
+# Lub jeśli aplikacja jest w /opt/taniprad:
+# cd /opt/taniprad
 ```
 
 #### 2. Pobierz zmiany z GitHub
@@ -49,17 +51,17 @@ git pull origin main
 
 #### 3. Zatrzymaj obecne kontenery
 ```bash
-docker-compose -f docker-compose.droplet.yml down
+docker-compose -f docker-compose.droplet-shared.yml down
 ```
 
 #### 4. Zbuduj nowy obraz
 ```bash
-docker-compose -f docker-compose.droplet.yml build --no-cache backend
+docker-compose -f docker-compose.droplet-shared.yml build --no-cache backend
 ```
 
 #### 5. Uruchom zaktualizowane kontenery
 ```bash
-docker-compose -f docker-compose.droplet.yml up -d
+docker-compose -f docker-compose.droplet-shared.yml up -d
 ```
 
 #### 6. Zaktualizuj frontend
@@ -77,13 +79,13 @@ sudo systemctl reload nginx
 #### 8. Sprawdź status
 ```bash
 # Sprawdź kontenery
-docker-compose -f docker-compose.droplet.yml ps
+docker-compose -f docker-compose.droplet-shared.yml ps
 
 # Sprawdź backend
 curl http://localhost:8080/api/health
 
 # Sprawdź logi
-docker-compose -f docker-compose.droplet.yml logs -f backend
+docker-compose -f docker-compose.droplet-shared.yml logs -f backend
 ```
 
 ---

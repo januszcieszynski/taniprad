@@ -9,8 +9,11 @@ ssh root@188.166.77.171
 ## Krok 2: Uruchom aktualizację
 
 ```bash
-cd /opt/taniprad && git pull && ./deploy-update.sh
+cd ~/apps/taniprad && git pull && ./deploy-update.sh
 ```
+
+> **Uwaga:** Jeśli aplikacja jest w innym katalogu, dostosuj ścieżkę.
+> Skrypt automatycznie wykryje lokalizację jeśli jesteś w katalogu aplikacji.
 
 **To wszystko!** 🎉
 
@@ -38,8 +41,10 @@ Jeśli wolisz mieć kontrolę nad każdym krokiem:
 # 1. Zaloguj się
 ssh root@188.166.77.171
 
-# 2. Przejdź do katalogu
-cd /opt/taniprad
+# 2. Przejdź do katalogu aplikacji
+cd ~/apps/taniprad
+# Lub jeśli jest w innym miejscu:
+# cd /opt/taniprad
 
 # 3. Pobierz zmiany
 git pull origin main

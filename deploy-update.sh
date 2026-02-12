@@ -14,19 +14,34 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Konfiguracja
-APP_DIR="/opt/taniprad"
-FRONTEND_DIR="/var/www/taniprad"
-DOCKER_COMPOSE_FILE="docker-compose.droplet.yml"
-
-# Sprawdź czy jesteśmy w odpowiednim katalogu
-if [ ! -d "$APP_DIR" ]; then
-    echo -e "${RED}❌ Katalog $APP_DIR nie istnieje${NC}"
-    echo "Uruchom najpierw pełną instalację zgodnie z QUICK_INSTALL.md"
+# Konfiguracja - automatyczne wykrywanie lokalizacji
+if [ -d "/opt/taniprad" ]; then
+    APP_DIR="/opt/taniprad"
+elif [ -d "$HOME/apps/taniprad" ]; then
+    APP_DIR="$HOME/apps/taniprad"
+elif [ -d "$(pwd)" ] && [ -f "$(pwd)/app.py" ]; then
+    APP_DIR="$(pwd)"
+else
+    echo -e "${RED}❌ Nie można znaleźć katalogu aplikacji${NC}"
+    echo "Sprawdź czy jesteś w katalogu taniprad lub podaj ścieżkę:"
+    echo "  cd ~/apps/taniprad && ./deploy-update.sh"
     exit 1
 fi
 
+FRONTEND_DIR="/var/www/taniprad"
+DOCKER_COMPOSE_FILE="docker-compose.droplet-shared.yml"
+
+echo -e "${BLUE}📂 Katalog aplikacji: $APP_DIR${NC}"
+echo -e "${BLUE}🐳 Plik docker-compose: $DOCKER_COMPOSE_FILE${NC}"
+echo ""
+
 cd $APP_DIR
+
+# Sprawdź czy to faktycznie katalog aplikacji
+if [ ! -f "app.py" ]; then
+    echo -e "${RED}❌ To nie jest katalog aplikacji taniprad (brak app.py)${NC}"
+    exit 1
+fi
 
 echo -e "${BLUE}📥 Pobieranie najnowszych zmian z GitHub...${NC}"
 git fetch origin

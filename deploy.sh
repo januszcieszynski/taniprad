@@ -12,8 +12,17 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Configuration
-APP_DIR="/opt/taniprad"
+# Configuration - auto-detect location
+if [ -d "/opt/taniprad" ]; then
+    APP_DIR="/opt/taniprad"
+elif [ -d "$HOME/apps/taniprad" ]; then
+    APP_DIR="$HOME/apps/taniprad"
+else
+    echo "❌ Cannot find taniprad directory"
+    echo "Please run from taniprad directory or set APP_DIR manually"
+    exit 1
+fi
+
 NGINX_SITE="/etc/nginx/sites-available/prad.januszcieszynski.pl"
 FRONTEND_DIR="/var/www/taniprad"
 
@@ -22,9 +31,19 @@ cd $APP_DIR
 git pull origin main
 
 echo -e "${YELLOW}🔨 Building and restarting backend...${NC}"
-docker-compose -f docker-compose.droplet.yml down
-docker-compose -f docker-compose.droplet.yml build --no-cache
-docker-compose -f docker-compose.droplet.yml up -d
+# Try droplet-shared first (newer), fallback to droplet.yml
+if [ -f "docker-compose.droplet-shared.yml" ]; then
+    COMPOSE_FILE="docker-compose.droplet-shared.yml"
+elif [ -f "docker-compose.droplet.yml" ]; then
+    COMPOSE_FILE="docker-compose.droplet.yml"
+else
+    echo -e "${RED}❌ No docker-compose file found!${NC}"
+    exit 1
+fi
+
+docker-compose -f $COMPOSE_FILE down
+docker-compose -f $COMPOSE_FILE build --no-cache
+docker-compose -f $COMPOSE_FILE up -d
 
 echo -e "${YELLOW}📄 Deploying frontend...${NC}"
 # Create frontend directory if it doesn't exist
@@ -57,7 +76,7 @@ echo -e "${YELLOW}🧹 Cleaning up old Docker images...${NC}"
 docker system prune -f
 
 echo -e "${YELLOW}📊 Checking service status...${NC}"
-docker-compose -f docker-compose.droplet.yml ps
+docker-compose -f $COMPOSE_FILE ps
 
 echo -e "${GREEN}✅ Deployment complete!${NC}"
 echo ""
@@ -66,4 +85,4 @@ echo "  Backend:  curl http://localhost:8080/api/health"
 echo "  Frontend: curl https://prad.januszcieszynski.pl"
 echo ""
 echo "View logs:"
-echo "  docker-compose -f docker-compose.droplet.yml logs -f backend"
+echo "  docker-compose -f $COMPOSE_FILE logs -f backend"
