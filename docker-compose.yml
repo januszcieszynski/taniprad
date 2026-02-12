@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build: ./backend
+    container_name: tani-prad-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ./backend/app.py:/app/app.py
+      - /tmp/uploads:/tmp/uploads
+    restart: unless-stopped
+    networks:
+      - tani-prad-network
+
+  # Frontend (nginx serving static files)
+  frontend:
+    image: nginx:alpine
+    container_name: tani-prad-frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - tani-prad-network
+
+networks:
+  tani-prad-network:
+    driver: bridge

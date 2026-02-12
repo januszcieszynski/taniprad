@@ -1,0 +1,38 @@
+name: taniprad
+region: fra
+domains:
+  - domain: prad.januszcieszynski.pl
+    type: PRIMARY
+
+services:
+  - name: backend
+    dockerfile_path: Dockerfile
+    github:
+      repo: <TWOJE_REPO>
+      branch: main
+      deploy_on_push: true
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xs
+    routes:
+      - path: /api
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 10
+      period_seconds: 30
+      timeout_seconds: 10
+      success_threshold: 1
+      failure_threshold: 3
+
+static_sites:
+  - name: frontend
+    github:
+      repo: <TWOJE_REPO>
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    output_dir: /
+    index_document: index.html
+    catchall_document: index.html
+    routes:
+      - path: /

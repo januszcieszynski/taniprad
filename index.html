@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kalkulator oszczędności – Ustawa „Tani prąd"</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f8f9fa;
+  --bg-card: #ffffff;
+  --bg-card-alt: #f1f3f5;
+  --accent: #dc143c;
+  --accent-dim: #a01028;
+  --green: #2d5016;
+  --green-dim: #1a3009;
+  --red: #dc143c;
+  --red-dim: #a01028;
+  --text: #1a1d23;
+  --text-dim: #495057;
+  --text-muted: #6c757d;
+  --border: #dee2e6;
+  --navy: #1e3a5f;
+  --navy-light: #2c5282;
+  --gold: #d4af37;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.noise {
+  display: none;
+}
+
+.glow-orb {
+  position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0;
+}
+.glow-orb.cyan { width: 500px; height: 500px; background: rgba(220,20,60,0.03); top: -100px; right: -100px; }
+.glow-orb.emerald { width: 400px; height: 400px; background: rgba(30,58,95,0.04); bottom: 10%; left: -80px; }
+
+.container {
+  position: relative; z-index: 1;
+  max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem;
+}
+
+header {
+  text-align: center; margin-bottom: 3rem; padding-top: 1rem;
+}
+
+header.hidden {
+  display: none;
+}
+
+header .badge {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  background: var(--red); border: 1px solid var(--red-dim);
+  border-radius: 100px; padding: 0.4rem 1.2rem; font-size: 0.8rem;
+  color: white; text-transform: uppercase; letter-spacing: 0.08em;
+  font-weight: 600; margin-bottom: 1.5rem;
+}
+header .badge::before { content: '🇵🇱'; }
+
+header h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 800; line-height: 1.15;
+  color: var(--navy);
+}
+
+header p {
+  color: var(--text-dim); font-size: 1.05rem; max-width: 620px;
+  margin: 1rem auto 0; line-height: 1.6;
+}
+
+/* Upload section */
+.upload-section {
+  background: var(--bg-card); border: 2px dashed var(--border);
+  border-radius: 20px; padding: 3rem 2rem; text-align: center;
+  margin-bottom: 2rem; transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.upload-section.hidden {
+  display: none;
+}
+
+.upload-section:hover {
+  border-color: var(--red);
+}
+
+.upload-section.dragover {
+  border-color: var(--navy);
+  background: rgba(30,58,95,0.03);
+}
+
+.upload-icon {
+  font-size: 4rem; margin-bottom: 1rem;
+}
+
+.upload-section h2 {
+  font-size: 1.5rem; margin-bottom: 0.5rem;
+}
+
+.upload-section p {
+  color: var(--text-muted); margin-bottom: 1.5rem;
+}
+
+.file-input-wrapper {
+  position: relative; display: inline-block;
+}
+
+.file-input-wrapper input[type="file"] {
+  position: absolute; opacity: 0; width: 1px; height: 1px;
+}
+
+.file-input-label {
+  display: inline-block; padding: 0.8rem 2rem;
+  background: var(--red); color: white;
+  border-radius: 10px; font-weight: 600;
+  cursor: pointer; transition: all 0.3s ease;
+}
+
+.file-input-label:hover {
+  background: var(--red-dim);
+  transform: translateY(-2px);
+}
+
+.selected-file {
+  margin-top: 1rem; color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.analyze-btn {
+  margin-top: 1rem; padding: 0.8rem 2rem;
+  background: var(--navy); color: white;
+  border: none; border-radius: 10px;
+  font-weight: 600; font-size: 1rem;
+  cursor: pointer; transition: all 0.3s ease;
+  display: none;
+}
+
+.analyze-btn:hover {
+  background: var(--navy-light);
+  transform: translateY(-2px);
+}
+
+.analyze-btn.visible {
+  display: inline-block;
+}
+
+/* Loading spinner */
+.loading {
+  display: none; text-align: center; margin: 3rem 0;
+  padding: 3rem 2rem;
+}
+
+.loading.visible {
+  display: block;
+}
+
+.lightning-loader {
+  font-size: 5rem;
+  margin: 0 auto 1.5rem;
+  animation: pulse 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 20px rgba(220,20,60,0.3));
+  line-height: 1;
+  text-align: center;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.7;
+  }
+}
+
+.loading-text {
+  font-size: 1.2rem;
+  color: var(--navy);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.loading-subtext {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.progress-bar {
+  width: 200px;
+  height: 4px;
+  background: rgba(220,20,60,0.1);
+  border-radius: 10px;
+  margin: 1.5rem auto 0;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--red);
+  border-radius: 10px;
+  animation: progress 3s ease-in-out;
+  width: 0%;
+}
+
+@keyframes progress {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+
+/* Results section */
+.results-section {
+  display: none;
+}
+
+.results-section.visible {
+  display: block;
+}
+
+.savings-hero {
+  background: linear-gradient(135deg, var(--bg-card) 0%, rgba(30,58,95,0.05) 100%);
+  border: 2px solid var(--navy); border-radius: 20px;
+  padding: 2.5rem; text-align: center; margin-bottom: 2rem;
+  position: relative; overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+.savings-hero::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, rgba(220,20,60,0.03), transparent 70%);
+}
+
+.savings-hero .label {
+  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--navy); font-weight: 600; position: relative;
+}
+
+.savings-hero .amount {
+  font-family: 'Playfair Display', serif; font-size: clamp(3rem, 8vw, 5rem);
+  font-weight: 900; color: var(--red); position: relative;
+  text-shadow: 0 0 60px rgba(220,20,60,0.15);
+  line-height: 1.1; margin: 0.5rem 0;
+}
+
+.savings-hero .amount .currency { font-size: 0.5em; vertical-align: super; opacity: 0.7; }
+
+.savings-hero .sub {
+  font-size: 1rem; color: var(--text-dim); position: relative;
+}
+
+.savings-hero .sub strong { color: var(--navy); font-weight: 600; }
+
+.savings-hero .percent-badge {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: var(--navy); border: 1px solid var(--navy-light);
+  border-radius: 100px; padding: 0.5rem 1.2rem; font-size: 1.1rem;
+  color: white; font-weight: 700; margin-top: 1rem; position: relative;
+}
+
+/* Bill comparison */
+.comparison {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+  .comparison {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bill-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 1.8rem; position: relative; overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.bill-card.after { border-color: var(--navy); }
+.bill-card.after::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at top right, rgba(30,58,95,0.03), transparent 60%);
+}
+
+.bill-card .card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1.5rem; position: relative;
+}
+
+.bill-card .card-title {
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted); font-weight: 600;
+}
+
+.bill-card.before .card-title { color: var(--text-muted); }
+.bill-card.after .card-title { color: var(--navy); }
+
+.bill-card .total {
+  font-family: 'Playfair Display', serif;
+  font-size: 2.2rem; font-weight: 800; position: relative;
+  margin-bottom: 1.2rem;
+}
+
+.bill-card.before .total { color: var(--text); }
+.bill-card.after .total { color: var(--navy); }
+
+.line-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.6rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.85rem; position: relative;
+}
+
+.line-item:last-child { border-bottom: none; }
+.line-item .name { color: var(--text-dim); flex: 1; }
+.line-item .value { font-weight: 600; text-align: right; min-width: 80px; }
+.line-item .value.zero { color: var(--navy); }
+
+.line-item .saved-tag {
+  font-size: 0.65rem; background: rgba(30,58,95,0.1); color: var(--navy);
+  border-radius: 4px; padding: 0.15rem 0.4rem; margin-left: 0.5rem;
+  font-weight: 600; white-space: nowrap;
+}
+
+.line-item.subtotal {
+  border-top: 1px solid rgba(255,255,255,0.08); border-bottom: none;
+  margin-top: 0.5rem; padding-top: 0.8rem;
+  font-weight: 600; font-size: 0.9rem;
+}
+
+.line-item.subtotal .name { color: var(--text); }
+
+.section-label {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted); font-weight: 600; margin: 1rem 0 0.5rem;
+  padding-bottom: 0.3rem; border-bottom: 1px solid var(--border);
+}
+
+/* Filar breakdown */
+.filar-breakdown {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 2rem; margin-bottom: 2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.filar-breakdown h3 {
+  font-size: 1.3rem; margin-bottom: 1.5rem;
+}
+
+.filar-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1rem; margin-bottom: 0.8rem;
+  background: rgba(30,58,95,0.03); border-radius: 10px;
+  border-left: 3px solid var(--navy);
+}
+
+.filar-item .filar-name {
+  flex: 1;
+}
+
+.filar-item .filar-title {
+  font-weight: 600; font-size: 0.95rem;
+}
+
+.filar-item .filar-desc {
+  font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;
+}
+
+.filar-item .filar-value {
+  font-size: 1.3rem; font-weight: 700; color: var(--red);
+}
+
+/* Results header */
+.results-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.results-header h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--navy);
+  margin: 0;
+}
+
+/* Metadata */
+.invoice-metadata {
+  background: var(--bg-card-alt); border-radius: 12px;
+  padding: 1.5rem; margin-bottom: 2rem;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.metadata-item {
+  text-align: center;
+}
+
+.metadata-item .label {
+  font-size: 0.7rem; text-transform: uppercase;
+  color: var(--text-muted); letter-spacing: 0.05em;
+}
+
+.metadata-item .value {
+  font-size: 1.1rem; font-weight: 600; margin-top: 0.3rem;
+}
+
+.disclaimer {
+  background: rgba(30,58,95,0.03); border: 1px solid rgba(30,58,95,0.15);
+  border-radius: 12px; padding: 1.5rem; font-size: 0.85rem;
+  color: var(--text-dim); line-height: 1.6;
+}
+</style>
+</head>
+<body>
+<div class="noise"></div>
+<div class="glow-orb cyan"></div>
+<div class="glow-orb emerald"></div>
+
+<div class="container">
+  <header id="mainHeader">
+    <div class="badge">PROJEKT USTAWY</div>
+    <h1>Kalkulator oszczędności<br>„Tani prąd"</h1>
+    <p>Oblicz ile zaoszczędzisz na rachunku za energię po wejściu w życie ustawy prezydenckiej</p>
+  </header>
+
+  <!-- Upload section -->
+  <div class="upload-section" id="uploadSection">
+    <div class="upload-icon">📄</div>
+    <h2>Prześlij swoją fakturę</h2>
+    <p>Akceptowane formaty: PDF, JPG, PNG (max 10 MB)</p>
+    
+    <div class="file-input-wrapper">
+      <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png">
+      <label for="fileInput" class="file-input-label">
+        Wybierz plik
+      </label>
+    </div>
+    
+    <div class="selected-file" id="selectedFile"></div>
+    <button class="analyze-btn" id="analyzeBtn">Analizuj fakturę</button>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loading">
+    <div class="lightning-loader">⚡</div>
+    <div class="loading-text">Analizuję Twoją fakturę</div>
+    <div class="loading-subtext">Obliczam oszczędności według ustawy "Tani prąd"</div>
+    <div class="progress-bar">
+      <div class="progress-bar-fill" id="progressBar"></div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-section" id="resultsSection">
+    <!-- Small header -->
+    <div class="results-header">
+      <h2>Kalkulator oszczędności „Tani prąd"</h2>
+    </div>
+
+    <!-- Savings hero -->
+    <div class="savings-hero">
+      <div class="label" id="savingsLabel">Twoja oszczędność</div>
+      <div class="amount" id="savingsAmount">— <span class="currency">zł</span></div>
+      <div class="sub">
+        Rachunek spadnie z <strong id="savingsOld">—</strong>
+        na <strong id="savingsNew">—</strong>
+      </div>
+      <div class="percent-badge">
+        📉 <span id="savingsPercent">—</span>% taniej
+      </div>
+    </div>
+
+    <!-- Invoice metadata -->
+    <div class="invoice-metadata" id="metadata"></div>
+
+    <!-- Filar breakdown -->
+    <div class="filar-breakdown">
+      <h3>Skąd te oszczędności?</h3>
+      <div id="filarItems"></div>
+    </div>
+
+    <!-- Comparison -->
+    <div class="comparison">
+      <div class="bill-card before">
+        <div class="card-header">
+          <span class="card-title">🔴 Przed ustawą</span>
+        </div>
+        <div id="beforeItems"></div>
+        <div class="total" id="beforeTotal">—</div>
+      </div>
+
+      <div class="bill-card after">
+        <div class="card-header">
+          <span class="card-title">🟢 Po ustawie</span>
+        </div>
+        <div id="afterItems"></div>
+        <div class="total" id="afterTotal">—</div>
+      </div>
+    </div>
+
+    <div class="disclaimer">
+      Symulacja oparta na przesłanej fakturze oraz projekcie ustawy „Tani prąd". 
+      Rzeczywiste oszczędności mogą się różnić w zależności od ostatecznego brzmienia ustawy 
+      oraz decyzji taryfowych Prezesa URE.
+    </div>
+  </div>
+</div>
+
+<script>
+// Konfiguracja API
+// Backend działa na porcie 8080
+const API_URL = 'http://localhost:8080';  // Backend API
+
+const fileInput = document.getElementById('fileInput');
+const selectedFile = document.getElementById('selectedFile');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const uploadSection = document.getElementById('uploadSection');
+const loading = document.getElementById('loading');
+const resultsSection = document.getElementById('resultsSection');
+
+// Formatowanie liczb
+const fmt = (v) => {
+  if (typeof v === 'number') {
+    return v.toFixed(2).replace('.', ',') + ' zł';
+  }
+  return v;
+};
+
+// Obsługa wyboru pliku
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    selectedFile.textContent = `Wybrany plik: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+    analyzeBtn.classList.add('visible');
+  } else {
+    selectedFile.textContent = '';
+    analyzeBtn.classList.remove('visible');
+  }
+});
+
+// Drag & drop
+uploadSection.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadSection.classList.add('dragover');
+});
+
+uploadSection.addEventListener('dragleave', () => {
+  uploadSection.classList.remove('dragover');
+});
+
+uploadSection.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadSection.classList.remove('dragover');
+  
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    fileInput.files = e.dataTransfer.files;
+    selectedFile.textContent = `Wybrany plik: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+    analyzeBtn.classList.add('visible');
+  }
+});
+
+// Analiza faktury
+analyzeBtn.addEventListener('click', async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  // Ukryj upload section, pokaż loading
+  uploadSection.classList.add('hidden');
+  resultsSection.classList.remove('visible');
+  loading.classList.add('visible');
+  analyzeBtn.disabled = true;
+
+  // Reset progress bar animation
+  const progressBar = document.getElementById('progressBar');
+  progressBar.style.animation = 'none';
+  setTimeout(() => {
+    progressBar.style.animation = 'progress 3s ease-in-out';
+  }, 10);
+
+  try {
+    // Zapisz czas rozpoczęcia
+    const startTime = Date.now();
+
+    // Przygotuj FormData
+    const formData = new FormData();
+    formData.append('file', file);
+
+    // Wyślij request
+    const response = await fetch(`${API_URL}/api/analyze-invoice`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Błąd analizy');
+    }
+
+    const data = await response.json();
+
+    // Upewnij się, że loader pokazał się minimum 3 sekundy
+    const elapsedTime = Date.now() - startTime;
+    const minLoadingTime = 3000; // 3 sekundy
+    const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
+
+    await new Promise(resolve => setTimeout(resolve, remainingTime));
+
+    // Wyświetl wyniki
+    displayResults(data);
+
+    // Ukryj loading, upload i główny nagłówek, pokaż wyniki
+    loading.classList.remove('visible');
+    resultsSection.classList.add('visible');
+    uploadSection.classList.add('hidden');
+    document.getElementById('mainHeader').classList.add('hidden');
+    analyzeBtn.disabled = false;
+
+  } catch (error) {
+    alert(`Błąd: ${error.message}`);
+    loading.classList.remove('visible');
+    uploadSection.classList.remove('hidden');
+    analyzeBtn.disabled = false;
+  }
+});
+
+// Wyświetlanie wyników
+function displayResults(data) {
+  // Metadata
+  const metadata = document.getElementById('metadata');
+  metadata.innerHTML = `
+    <div class="metadata-item">
+      <div class="label">Sprzedawca</div>
+      <div class="value">${data.metadata.sprzedawca || 'Nie rozpoznano'}</div>
+    </div>
+    <div class="metadata-item">
+      <div class="label">Numer faktury</div>
+      <div class="value">${data.metadata.numer_faktury}</div>
+    </div>
+    <div class="metadata-item">
+      <div class="label">Data faktury</div>
+      <div class="value">${data.metadata.data_faktury}</div>
+    </div>
+    <div class="metadata-item">
+      <div class="label">Zużycie</div>
+      <div class="value">${data.metadata.zuzycie_kwh} kWh</div>
+    </div>
+    <div class="metadata-item">
+      <div class="label">Okres</div>
+      <div class="value">${data.metadata.okres_rozliczeniowy}</div>
+    </div>
+  `;
+
+  // Savings hero
+  const okres = data.metadata.okres_rozliczeniowy || 'za okres rozliczeniowy';
+  document.getElementById('savingsLabel').textContent = `Twoja oszczędność ${okres}`;
+  document.getElementById('savingsAmount').innerHTML =
+    fmt(data.savings.total).replace(' zł', '') + ' <span class="currency">zł</span>';
+  document.getElementById('savingsOld').textContent = fmt(data.before.suma_brutto);
+  document.getElementById('savingsNew').textContent = fmt(data.after.suma_brutto);
+  document.getElementById('savingsPercent').textContent = data.savings.percent.toFixed(1);
+
+  // Filar breakdown
+  const filarItems = document.getElementById('filarItems');
+  const filary = [
+    {
+      name: 'Filar 1: Obniżka VAT',
+      desc: 'Z 23% na 5%',
+      value: data.savings.filar1_vat
+    },
+    {
+      name: 'Filar 2: Reforma certyfikatów',
+      desc: 'Świadectwa pochodzenia i efektywności',
+      value: data.savings.filar2_certyfikaty
+    },
+    {
+      name: 'Filar 3: Obniżka dystrybucji',
+      desc: 'Limit stopy zwrotu WACC',
+      value: data.savings.filar3_dystrybucja
+    },
+    {
+      name: 'Filar 4: Zerowanie opłat',
+      desc: 'Mocowa, OZE, kogeneracyjna, przejściowa',
+      value: data.savings.filar4_oplaty
+    }
+  ];
+
+  filarItems.innerHTML = filary.map(filar => `
+    <div class="filar-item">
+      <div class="filar-name">
+        <div class="filar-title">${filar.name}</div>
+        <div class="filar-desc">${filar.desc}</div>
+      </div>
+      <div class="filar-value">−${fmt(filar.value)}</div>
+    </div>
+  `).join('');
+
+  // Before items
+  const beforeItems = document.getElementById('beforeItems');
+  let beforeHTML = '';
+  let currentCategory = '';
+  
+  data.before.pozycje.forEach(item => {
+    if (item.kategoria !== currentCategory) {
+      currentCategory = item.kategoria;
+      beforeHTML += `<div class="section-label">${
+        currentCategory === 'sprzedaz' ? 'Sprzedaż energii' : 'Dystrybucja'
+      }</div>`;
+    }
+    beforeHTML += `
+      <div class="line-item">
+        <span class="name">${item.nazwa}</span>
+        <span class="value">${fmt(item.wartosc)}</span>
+      </div>
+    `;
+  });
+  
+  beforeHTML += `
+    <div class="line-item subtotal">
+      <span class="name">Razem netto</span>
+      <span class="value">${fmt(data.before.suma_netto)}</span>
+    </div>
+    <div class="line-item subtotal">
+      <span class="name">VAT ${data.before.vat_procent}%</span>
+      <span class="value">${fmt(data.before.vat_kwota)}</span>
+    </div>
+  `;
+  
+  beforeItems.innerHTML = beforeHTML;
+  document.getElementById('beforeTotal').textContent = fmt(data.before.suma_brutto);
+
+  // After items
+  const afterItems = document.getElementById('afterItems');
+  let afterHTML = '';
+  currentCategory = '';
+  
+  data.after.pozycje.forEach(item => {
+    if (item.kategoria !== currentCategory) {
+      currentCategory = item.kategoria;
+      afterHTML += `<div class="section-label">${
+        currentCategory === 'sprzedaz' ? 'Sprzedaż energii' : 'Dystrybucja'
+      }</div>`;
+    }
+    
+    const saved = data.before.pozycje.find(b => b.nazwa === item.nazwa);
+    const savingAmount = saved ? saved.wartosc - item.wartosc : 0;
+    
+    afterHTML += `
+      <div class="line-item">
+        <span class="name">${item.nazwa}</span>
+        <span class="value ${item.zerowana ? 'zero' : ''}">${fmt(item.wartosc)}</span>
+        ${savingAmount > 0 ? `<span class="saved-tag">−${fmt(savingAmount)}</span>` : ''}
+      </div>
+    `;
+  });
+  
+  afterHTML += `
+    <div class="line-item subtotal">
+      <span class="name">Razem netto</span>
+      <span class="value">${fmt(data.after.suma_netto)}</span>
+    </div>
+    <div class="line-item subtotal">
+      <span class="name">VAT ${data.after.vat_procent}%</span>
+      <span class="value">${fmt(data.after.vat_kwota)}</span>
+    </div>
+  `;
+  
+  afterItems.innerHTML = afterHTML;
+  document.getElementById('afterTotal').textContent = fmt(data.after.suma_brutto);
+}
+</script>
+</body>
+</html>
