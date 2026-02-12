@@ -1,0 +1,92 @@
+═══════════════════════════════════════════════════════════════
+🚀 SZYBKA AKTUALIZACJA PRODUKCJI - INSTRUKCJA
+═══════════════════════════════════════════════════════════════
+
+KROK 1: Zaloguj się na droplet
+───────────────────────────────────────────────────────────────
+
+ssh root@188.166.77.171
+
+
+KROK 2: Znajdź katalog aplikacji
+───────────────────────────────────────────────────────────────
+
+Najpierw sprawdź gdzie jest aplikacja:
+
+    find ~ -name "taniprad" -type d 2>/dev/null
+
+Lub sprawdź typowe lokalizacje:
+
+    ls -la ~/apps/taniprad
+    ls -la /opt/taniprad
+    ls -la ~/taniprad
+
+
+KROK 3: Przejdź do katalogu i zaktualizuj
+───────────────────────────────────────────────────────────────
+
+Gdy znajdziesz katalog, wykonaj:
+
+    cd ~/apps/taniprad          # lub inna ścieżka
+    git pull
+    ./deploy-update.sh
+
+
+ALTERNATYWNIE: Wszystko w jednej linii
+───────────────────────────────────────────────────────────────
+
+    cd ~/apps/taniprad && git pull && ./deploy-update.sh
+
+
+═══════════════════════════════════════════════════════════════
+CO ROBI SKRYPT?
+═══════════════════════════════════════════════════════════════
+
+Skrypt deploy-update.sh automatycznie:
+
+✓ Pokazuje zmiany do zaciągnięcia
+✓ Prosi o potwierdzenie
+✓ Zatrzymuje stare kontenery
+✓ Buduje nowy obraz backendu
+✓ Uruchamia zaktualizowane kontenery
+✓ Aktualizuje frontend w /var/www/taniprad
+✓ Sprawdza nginx i przeładowuje
+✓ Testuje czy wszystko działa
+
+
+═══════════════════════════════════════════════════════════════
+WERYFIKACJA PO DEPLOYMENT
+═══════════════════════════════════════════════════════════════
+
+1. Backend (na serwerze):
+   curl http://localhost:8080/api/health
+
+2. Frontend (publicznie):
+   https://prad.januszcieszynski.pl
+
+
+═══════════════════════════════════════════════════════════════
+W RAZIE PROBLEMÓW
+═══════════════════════════════════════════════════════════════
+
+Zobacz logi:
+    docker-compose -f docker-compose.droplet-shared.yml logs backend
+
+Szczegółowa dokumentacja:
+    cat DEPLOY.md
+    cat TROUBLESHOOTING.md
+
+
+═══════════════════════════════════════════════════════════════
+PODSUMOWANIE ZMIAN W TEJ AKTUALIZACJI
+═══════════════════════════════════════════════════════════════
+
+✓ Naprawiono błąd "load failed"
+✓ Dodano sprawdzanie połączenia z backendem
+✓ Poprawiono komunikaty błędów
+✓ Dodano szczegółowe logowanie w backendzie
+✓ Dodano nowe skrypty deployment
+✓ Dodano kompletną dokumentację
+
+
+═══════════════════════════════════════════════════════════════
