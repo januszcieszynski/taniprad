@@ -357,11 +357,40 @@ def analyze_invoice():
         if not invoice_data:
             return jsonify({'error': 'Nie udało się sparsować faktury'}), 500
 
-        # Oblicz oszczędności
+        # Sprawdź typ dokumentu
+        typ_dokumentu = invoice_data.get('typ_dokumentu', 'faktura_rozliczeniowa')
+
+        if typ_dokumentu == 'prognoza':
+            # Prognoza: zwróć dane prognozy z informacją, że potrzebna jest faktura
+            print(f"📊 Wykryto prognozę: {invoice_data.get('numer_dokumentu_prognozowego', 'brak')}")
+            result = {
+                'typ_dokumentu': 'prognoza',
+                'dane_prognozy': {
+                    'sprzedawca': invoice_data.get('sprzedawca', ''),
+                    'numer_dokumentu_prognozowego': invoice_data.get('numer_dokumentu_prognozowego', ''),
+                    'numer_klienta': invoice_data.get('numer_klienta', ''),
+                    'okres_rozliczeniowy': invoice_data.get('okres_rozliczeniowy', ''),
+                    'zuzycie_kwh': invoice_data.get('zuzycie_kwh', 0),
+                    'suma_netto': invoice_data.get('suma_netto', 0),
+                    'suma_brutto': invoice_data.get('suma_brutto', 0),
+                    'pozycje': invoice_data.get('pozycje', []),
+                },
+                'uwaga': invoice_data.get('uwaga', ''),
+                'info': 'Przesłany dokument to prognoza zużycia energii, nie faktura rozliczeniowa. '
+                        'Prognoza zawiera jedynie szacunkowe kwoty za sprzedaż i dystrybucję bez '
+                        'szczegółowego rozbicia na składniki (opłata sieciowa, OZE, kogeneracyjna, mocowa itd.). '
+                        'Aby obliczyć dokładne oszczędności z ustawy „Tani prąd", prześlij fakturę '
+                        'rozliczeniową — znajdziesz ją w eBOK swojego dostawcy.',
+                '_parser_method': 'pdfplumber+regex'
+            }
+            return jsonify(result), 200
+
+        # Faktura rozliczeniowa: pełne obliczenie oszczędności
         result = calculate_savings(invoice_data)
 
-        # Dodaj informację o metodzie parsowania
+        # Dodaj informację o metodzie parsowania i typie dokumentu
         result['_parser_method'] = 'pdfplumber+regex'
+        result['typ_dokumentu'] = 'faktura_rozliczeniowa'
 
         return jsonify(result), 200
         

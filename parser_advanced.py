@@ -1,7 +1,8 @@
 """
 Zaawansowany parser faktur za energię elektryczną
 Wykorzystuje pdfplumber do ekstrakcji tabel i strukturyzowanych danych
-Obsługuje dostawców: E.ON, PGE, TAURON (i podobne formaty)
+Obsługuje dostawców: E.ON, PGE, TAURON, Lumi PGE (i podobne formaty)
+Rozróżnia typ dokumentu: faktura rozliczeniowa vs prognoza
 """
 import re
 import pdfplumber
@@ -11,6 +12,11 @@ from decimal import Decimal
 
 class InvoiceParser:
     """Parser faktur za energię elektryczną"""
+
+    # Typy dokumentów
+    DOC_TYPE_INVOICE = 'faktura_rozliczeniowa'
+    DOC_TYPE_FORECAST = 'prognoza'
+    DOC_TYPE_UNKNOWN = 'nieznany'
 
     def __init__(self):
         self.categories_mapping = {
@@ -63,10 +69,157 @@ class InvoiceParser:
             # Wykryj dostawcę
             provider = self._detect_provider(text)
 
-            # Parsuj dane
-            result = self._parse_invoice_data(text, tables, provider)
+            # Wykryj typ dokumentu (faktura vs prognoza)
+            doc_type = self._detect_document_type(text, provider)
 
-            return result
+            if doc_type == self.DOC_TYPE_FORECAST:
+                # Prognoza: wyciągnij podstawowe dane i zwróć informację
+                result = self._parse_forecast(text, tables, provider)
+                result['typ_dokumentu'] = self.DOC_TYPE_FORECAST
+                return result
+            else:
+                # Faktura rozliczeniowa: pełne parsowanie
+                result = self._parse_invoice_data(text, tables, provider)
+                result['typ_dokumentu'] = self.DOC_TYPE_INVOICE
+                return result
+
+    def _detect_document_type(self, text: str, provider: str) -> str:
+        """Rozpoznaje typ dokumentu: faktura rozliczeniowa vs prognoza"""
+        text_lower = text.lower()
+
+        # Wzorce jednoznacznie wskazujące na PROGNOZĘ
+        forecast_indicators = [
+            'prognoza zużycia',
+            'szczegóły prognozy',
+            'dokument prognozowy',
+            'numer dokumentu prognozowego',
+            'prognoza/ee/',
+            'przewidywana należność',
+            'prognoza zużycia za okres',
+        ]
+
+        # Wzorce jednoznacznie wskazujące na FAKTURĘ ROZLICZENIOWĄ
+        invoice_indicators = [
+            'faktura vat',
+            'szczegółowe rozliczenie zużycia',
+            'rozliczenie za okres',
+            'nr licznika',
+            'wskazanie',
+            'data odczytu',
+            'typ odczytu',
+            'odczyt rzeczywisty',
+        ]
+
+        # Lumi PGE: "Podsumowanie" + "Prognoza zużycia energii" = prognoza
+        if provider == 'lumi_pge':
+            if any(kw in text_lower for kw in ['prognoza zużycia energii', 'prognoza/ee/']):
+                return self.DOC_TYPE_FORECAST
+
+        forecast_score = sum(1 for kw in forecast_indicators if kw in text_lower)
+        invoice_score = sum(1 for kw in invoice_indicators if kw in text_lower)
+
+        if forecast_score > invoice_score:
+            return self.DOC_TYPE_FORECAST
+        elif invoice_score > 0:
+            return self.DOC_TYPE_INVOICE
+        else:
+            return self.DOC_TYPE_UNKNOWN
+
+    def _parse_forecast(self, text: str, tables: List, provider: str) -> Dict:
+        """Parsuje prognozę — wyciąga podstawowe dane, ale NIE próbuje rozbijać na składniki"""
+        result = {
+            "sprzedawca": provider,
+            "numer_faktury": "",
+            "numer_dokumentu_prognozowego": "",
+            "data_faktury": "",
+            "okres_rozliczeniowy": "",
+            "zuzycie_kwh": 0,
+            "pozycje": [],
+            "suma_netto": 0,
+            "vat_procent": 23,
+            "vat_kwota": 0,
+            "suma_brutto": 0,
+            "numer_klienta": "",
+            "uwaga": "To jest prognoza, nie faktura rozliczeniowa. "
+                      "Prognoza nie zawiera szczegółowego rozbicia na składniki. "
+                      "Aby uzyskać pełną analizę oszczędności, prześlij fakturę rozliczeniową z pełnym rozbiciem."
+        }
+
+        text_lower = text.lower()
+
+        # Numer dokumentu prognozowego (Lumi PGE: "Prognoza/EE/15539487/26/01/1")
+        match = re.search(r'(Prognoza/EE/[\d/]+)', text, re.IGNORECASE)
+        if match:
+            result['numer_dokumentu_prognozowego'] = match.group(1)
+
+        # Numer klienta
+        match = re.search(r'(?:Tw[oó]j\s+numer\s+Klienta|nr\s+Klienta|IDENTYFIKATOR\s+KLIENTA):?\s*(\d+)', text, re.IGNORECASE)
+        if match:
+            result['numer_klienta'] = match.group(1)
+
+        # Okres prognozy (Lumi: "Prognoza zużycia za okres:\n...\n01.01.2026 - 31.01.2026")
+        # Data może być na innej linii niż nagłówek
+        date_pattern = r'\d{2}[./]\d{2}[./]\d{4}'
+        match = re.search(rf'Prognoza\s+zużycia\s+za\s+okres:?\s*\n.*?\n?\s*({date_pattern})\s*[-–]\s*({date_pattern})', text, re.IGNORECASE)
+        if match:
+            result['okres_rozliczeniowy'] = f"{match.group(1)} - {match.group(2)}"
+        else:
+            # Generyczny fallback
+            patterns = [
+                rf'za\s+okres\s+od\s+({date_pattern})\s+do\s+({date_pattern})',
+                rf'okres:?\s*({date_pattern})\s*[-–]\s*({date_pattern})',
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    result['okres_rozliczeniowy'] = f"{match.group(1)} - {match.group(2)}"
+                    break
+
+        # Kwoty z prognozy (Lumi: tabela ze Sprzedaż/Dystrybucja)
+        # Szukaj "Sprzedaż energii elektrycznej" + kwoty
+        sprzedaz_match = re.search(r'Sprzedaż\s+energii\s+elektrycznej\s+(\d+)\s+([\d,]+)\s+\d+%?\s+([\d,]+)', text)
+        dystrybucja_match = re.search(r'Dystrybucja\s+energii\s+elektrycznej\s+(\d+)\s+([\d,]+)\s+\d+%?\s+([\d,]+)', text)
+
+        if sprzedaz_match:
+            zuzycie = self._clean_number(sprzedaz_match.group(1))
+            netto = self._clean_number(sprzedaz_match.group(2))
+            brutto = self._clean_number(sprzedaz_match.group(3))
+            result['pozycje'].append({
+                'nazwa': 'Sprzedaż energii elektrycznej (prognoza)',
+                'wartosc_netto': round(netto, 2),
+                'kategoria': 'sprzedaz'
+            })
+            if zuzycie > 0:
+                result['zuzycie_kwh'] = zuzycie
+
+        if dystrybucja_match:
+            netto = self._clean_number(dystrybucja_match.group(2))
+            brutto = self._clean_number(dystrybucja_match.group(3))
+            result['pozycje'].append({
+                'nazwa': 'Dystrybucja energii elektrycznej (prognoza)',
+                'wartosc_netto': round(netto, 2),
+                'kategoria': 'dystrybucja'
+            })
+
+        # Suma — "Razem" lub "Do zapłaty"
+        match = re.search(r'Razem\s+([\d,]+)\s+([\d,]+)', text)
+        if match:
+            result['suma_netto'] = self._clean_number(match.group(1))
+            result['suma_brutto'] = self._clean_number(match.group(2))
+            result['vat_kwota'] = round(result['suma_brutto'] - result['suma_netto'], 2)
+
+        # Fallback: "Do zapłaty" / "Ile powinieneś zapłacić"
+        if result['suma_brutto'] == 0:
+            match = re.search(r'(?:Do\s+zapłaty|Ile\s+powinieneś\s+zapłacić\??)\s*([\d.,]+)\s*zł', text, re.IGNORECASE)
+            if match:
+                result['suma_brutto'] = self._clean_number(match.group(1))
+
+        # Numer faktury rozliczeniowej, na którą powołuje się prognoza
+        match = re.search(r'poprzedniej\s+faktury\s+(\w+)', text, re.IGNORECASE)
+        if match:
+            result['numer_faktury_rozliczeniowej'] = match.group(1)
+
+        return result
 
     def _dedup_tables(self, tables: List) -> List:
         """Deduplikuje podwojone znaki we wszystkich tabelach"""
@@ -108,7 +261,10 @@ class InvoiceParser:
     def _detect_provider(self, text: str) -> str:
         """Wykrywa dostawcę energii na podstawie tekstu faktury"""
         text_lower = text.lower()
-        if 'pge obrót' in text_lower or 'gkpge.pl' in text_lower or 'pge-obrot' in text_lower:
+        # Lumi PGE musi być sprawdzane PRZED PGE (bo zawiera "PGE Obrót" w danych)
+        if 'lumi' in text_lower and ('lumipge' in text_lower or 'lumi' in text_lower):
+            return 'lumi_pge'
+        elif 'pge obrót' in text_lower or 'gkpge.pl' in text_lower or 'pge-obrot' in text_lower:
             return 'pge'
         elif 'tauron' in text_lower or 'ttaauurroonn' in text_lower:
             return 'tauron'
@@ -327,6 +483,9 @@ class InvoiceParser:
     def _parse_items(self, tables: List, text: str, provider: str) -> List[Dict]:
         """Parsuje pozycje faktury — dispatcher wg dostawcy"""
         if provider == 'pge':
+            return self._parse_items_pge(tables, text)
+        elif provider == 'lumi_pge':
+            # Lumi PGE faktury rozliczeniowe mają format zbliżony do PGE
             return self._parse_items_pge(tables, text)
         elif provider == 'tauron':
             return self._parse_items_tauron(tables, text)
@@ -772,7 +931,7 @@ class InvoiceParser:
             totals['vat_procent'] = 23
             return totals
 
-        if provider == 'pge':
+        if provider in ('pge', 'lumi_pge'):
             return self._parse_totals_pge(text, tables)
         elif provider == 'tauron':
             return self._parse_totals_tauron(text, tables)
@@ -956,7 +1115,7 @@ class InvoiceParser:
                 r'Łączne\s+zużycie\s+energii\s+(\d+)\s*kWh',
                 r'Twoje\s+zużycie.*?(\d+)\s*kWh',
             ]
-        elif provider == 'pge':
+        elif provider in ('pge', 'lumi_pge'):
             specific_patterns = [
                 # PGE: "Zużycie energii elektrycznej za 2024 rok 2.359 kWh" (separator tysięcy!)
                 r'Zużycie\s+energii\s+elektrycznej.*?([\d.]+)\s*kWh',
@@ -983,8 +1142,8 @@ class InvoiceParser:
                 if 50 <= consumption <= 100000:
                     return consumption
 
-        # PGE: sumuj zużycie z tabel (kolumna "Ilość" z jednostką "kWh")
-        if provider == 'pge':
+        # PGE / Lumi PGE: sumuj zużycie z tabel (kolumna "Ilość" z jednostką "kWh")
+        if provider in ('pge', 'lumi_pge'):
             total_kwh = self._sum_consumption_from_tables_pge(tables)
             if total_kwh >= 50:
                 return total_kwh
