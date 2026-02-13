@@ -667,23 +667,86 @@ analyzeBtn.addEventListener('click', async () => {
   }
 });
 
+// Wyświetlanie informacji o prognozie
+function displayForecastMessage(data) {
+  const resultsSection = document.getElementById('resultsSection');
+  const metadata = document.getElementById('metadata');
+  const filarItems = document.getElementById('filarItems');
+  const beforeItems = document.getElementById('beforeItems');
+  const afterItems = document.getElementById('afterItems');
+
+  // Ukryj standardowe sekcje
+  document.querySelector('.savings-hero').style.display = 'none';
+  document.querySelector('.filar-breakdown').style.display = 'none';
+  document.querySelector('.comparison').style.display = 'none';
+  document.querySelector('.disclaimer').style.display = 'none';
+
+  // Wyświetl informację o prognozie
+  const prognozyData = data.dane_prognozy || {};
+
+  metadata.innerHTML = `
+    <div style="grid-column: 1 / -1; text-align: center; padding: 2rem;">
+      <div style="font-size: 4rem; margin-bottom: 1rem;">📊</div>
+      <h2 style="font-family: 'Playfair Display', serif; font-size: 2rem; color: var(--navy); margin-bottom: 1rem;">
+        Wykryto prognozę zużycia energii
+      </h2>
+      <p style="font-size: 1.1rem; color: var(--text-dim); line-height: 1.6; max-width: 600px; margin: 0 auto 2rem;">
+        ${data.info || 'To nie jest faktura rozliczeniowa, tylko prognoza przyszłego zużycia energii.'}
+      </p>
+
+      <div style="background: var(--bg-card); border: 2px solid var(--navy); border-radius: 16px; padding: 2rem; max-width: 500px; margin: 0 auto;">
+        <div style="margin-bottom: 1.5rem;">
+          <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 0.3rem;">
+            Sprzedawca
+          </div>
+          <div style="font-size: 1.2rem; font-weight: 600; color: var(--navy);">
+            ${prognozyData.sprzedawca || 'Nie rozpoznano'}
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 0.3rem;">
+            Okres rozliczeniowy
+          </div>
+          <div style="font-size: 1.2rem; font-weight: 600; color: var(--navy);">
+            ${prognozyData.okres_rozliczeniowy || 'Nie rozpoznano'}
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 2rem; padding: 1.5rem; background: rgba(30,58,95,0.05); border-radius: 12px; border: 1px solid rgba(30,58,95,0.15);">
+        <p style="font-size: 0.95rem; color: var(--text-dim); line-height: 1.6; margin: 0;">
+          💡 <strong>Wskazówka:</strong> Prześlij fakturę rozliczeniową (z rzeczywistym zużyciem energii), aby obliczyć oszczędności według ustawy „Tani prąd".
+        </p>
+      </div>
+
+      <button onclick="location.reload()" style="margin-top: 2rem; padding: 0.8rem 2rem; background: var(--red); color: white; border: none; border-radius: 10px; font-weight: 600; font-size: 1rem; cursor: pointer; transition: all 0.3s ease;">
+        Prześlij inną fakturę
+      </button>
+    </div>
+  `;
+
+  // Pokaż sekcję wyników (ale tylko z informacją o prognozie)
+  loading.classList.remove('visible');
+  resultsSection.classList.add('visible');
+  uploadSection.classList.add('hidden');
+  document.getElementById('mainHeader').classList.add('hidden');
+}
+
 // Wyświetlanie wyników
 function displayResults(data) {
   // Sprawdź typ dokumentu
   if (data.typ_dokumentu === 'prognoza') {
-    // Wyświetl informację o prognozie
-    alert(
-      '📊 Wykryto prognozę zużycia energii\n\n' +
-      data.info + '\n\n' +
-      'Sprzedawca: ' + (data.dane_prognozy?.sprzedawca || 'Nie rozpoznano') + '\n' +
-      'Okres: ' + (data.dane_prognozy?.okres_rozliczeniowy || 'Nie rozpoznano')
-    );
-
-    // Pokaż ponownie upload
-    uploadSection.classList.remove('hidden');
-    resultsSection.classList.remove('visible');
+    // Wyświetl informację o prognozie jako zawartość strony
+    displayForecastMessage(data);
     return;
   }
+
+  // Przywróć widoczność standardowych sekcji (mogły być ukryte przez displayForecastMessage)
+  document.querySelector('.savings-hero').style.display = '';
+  document.querySelector('.filar-breakdown').style.display = '';
+  document.querySelector('.comparison').style.display = '';
+  document.querySelector('.disclaimer').style.display = '';
 
   // Bezpieczne sprawdzanie - na wypadek gdyby dane były niepełne
   if (!data.savings || !data.before || !data.after) {
