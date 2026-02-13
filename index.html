@@ -669,33 +669,34 @@ analyzeBtn.addEventListener('click', async () => {
 
 // Wyświetlanie wyników
 function displayResults(data) {
-  // Metadata
+  // Metadata - bezpieczne sprawdzanie
+  const meta = data.metadata || {};
   const metadata = document.getElementById('metadata');
   metadata.innerHTML = `
     <div class="metadata-item">
       <div class="label">Sprzedawca</div>
-      <div class="value">${data.metadata.sprzedawca || 'Nie rozpoznano'}</div>
+      <div class="value">${meta.sprzedawca || 'Nie rozpoznano'}</div>
     </div>
     <div class="metadata-item">
       <div class="label">Numer faktury</div>
-      <div class="value">${data.metadata.numer_faktury}</div>
+      <div class="value">${meta.numer_faktury || '-'}</div>
     </div>
     <div class="metadata-item">
       <div class="label">Data faktury</div>
-      <div class="value">${data.metadata.data_faktury}</div>
+      <div class="value">${meta.data_faktury || '-'}</div>
     </div>
     <div class="metadata-item">
       <div class="label">Zużycie</div>
-      <div class="value">${data.metadata.zuzycie_kwh} kWh</div>
+      <div class="value">${meta.zuzycie_kwh || 0} kWh</div>
     </div>
     <div class="metadata-item">
       <div class="label">Okres</div>
-      <div class="value">${data.metadata.okres_rozliczeniowy}</div>
+      <div class="value">${meta.okres_rozliczeniowy || '-'}</div>
     </div>
   `;
 
   // Savings hero
-  const okres = data.metadata.okres_rozliczeniowy || 'za okres rozliczeniowy';
+  const okres = meta.okres_rozliczeniowy || 'za okres rozliczeniowy';
   document.getElementById('savingsLabel').textContent = `Twoja oszczędność ${okres}`;
   document.getElementById('savingsAmount').innerHTML =
     fmt(data.savings.total).replace(' zł', '') + ' <span class="currency">zł</span>';
