@@ -1,6 +1,7 @@
 """
 Prosty parser faktury bez użycia Claude API
 Używa wyrażeń regularnych do ekstrakcji danych
+Obsługuje formaty: E.ON, PGE, TAURON
 """
 import re
 
@@ -21,66 +22,93 @@ def parse_invoice_simple(text):
         "suma_brutto": 0
     }
 
-    # Numer faktury
-    match = re.search(r'Faktura VAT nr\s+(\d+)', text)
-    if match:
-        result["numer_faktury"] = match.group(1)
+    date_pattern = r'\d{2}[./]\d{2}[./]\d{4}'
+
+    # Numer faktury — różne formaty
+    patterns = [
+        r'FAKTURA\s+VAT\s+NR\s+([\w/]+)',
+        r'Numer\s+faktury\s*\n\s*([\w/.-]+)',
+        r'Faktura\s+VAT\s+nr\s+([\w/.-]+)',
+        r'Nr\s+faktury:?\s*([\w/.-]+)',
+    ]
+    for p in patterns:
+        match = re.search(p, text, re.IGNORECASE)
+        if match:
+            result["numer_faktury"] = match.group(1).strip()
+            break
 
     # Data faktury
-    match = re.search(r'z dnia\s+(\d{2}\.\d{2}\.\d{4})', text)
-    if match:
-        result["data_faktury"] = match.group(1)
+    patterns = [
+        rf'[Zz]\s+dnia\s+({date_pattern})',
+        rf'Data\s+wystawienia\s*\n?\s*({date_pattern})',
+        rf'Data\s+faktury:?\s*({date_pattern})',
+    ]
+    for p in patterns:
+        match = re.search(p, text)
+        if match:
+            result["data_faktury"] = match.group(1)
+            break
 
     # Okres rozliczeniowy
-    match = re.search(r'w okresie od\s+(\d{2}\.\d{2}\.\d{4})\s+do\s+(\d{2}\.\d{2}\.\d{4})', text)
-    if match:
-        result["okres_rozliczeniowy"] = f"{match.group(1)} - {match.group(2)}"
+    patterns = [
+        rf'w\s+okresie\s+od\s+({date_pattern})\s+do\s+({date_pattern})',
+        rf'za\s+okres\s+od\s+({date_pattern})\s+do\s+({date_pattern})',
+        rf'Rozliczenie\s+za\s+okres\s+od\s+({date_pattern})\s+do\s+({date_pattern})',
+        rf'Okres\s+rozliczeniowy\s*\n?\s*({date_pattern})\s*[-–]\s*({date_pattern})',
+        rf'okres:?\s*({date_pattern})\s*[-–]\s*({date_pattern})',
+    ]
+    for p in patterns:
+        match = re.search(p, text, re.IGNORECASE)
+        if match:
+            result["okres_rozliczeniowy"] = f"{match.group(1)} - {match.group(2)}"
+            break
 
-    # Szukamy sekcji ze szczegółami zużycia
-    # Format: "Lp. Pozycja Netto ... Brutto"
-    lines = text.split('\n')
-
-    in_items_section = False
-    for i, line in enumerate(lines):
-        # Sprawdź czy to nagłówek tabeli
-        if 'Pozycja' in line and 'Netto' in line and 'Brutto' in line:
-            in_items_section = True
-            continue
-
-        if in_items_section:
-            # Koniec sekcji pozycji
-            if 'Razem' in line or 'Suma' in line or 'należność' in line.lower():
-                in_items_section = False
-
-    # Próbujemy znaleźć wartości netto i brutto z głównej sekcji rozliczenia
-    # "Należność za faktyczne zużycie" + wartości
+    # Sumy — różne formaty
+    # E.ON: "Należność za faktyczne zużycie NETTO VAT% VAT BRUTTO"
     match = re.search(r'Należność za faktyczne zużycie\s+([\d,]+)\s+\d+\s+([\d,]+)\s+([\d,]+)', text)
     if match:
-        netto = float(match.group(1).replace(',', '.'))
-        vat = float(match.group(2).replace(',', '.'))
-        brutto = float(match.group(3).replace(',', '.'))
+        result["suma_netto"] = float(match.group(1).replace(',', '.'))
+        result["vat_kwota"] = float(match.group(2).replace(',', '.'))
+        result["suma_brutto"] = float(match.group(3).replace(',', '.'))
 
-        result["suma_netto"] = netto
-        result["vat_kwota"] = vat
-        result["suma_brutto"] = brutto
+    # PGE: "Wartość ogółem w rozbiciu na stawki VAT 23 NETTO VAT BRUTTO"
+    if result["suma_netto"] == 0:
+        match = re.search(r'Wartość\s+ogółem.*?23\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)', text)
+        if match:
+            result["suma_netto"] = float(match.group(1).replace(',', '.'))
+            result["vat_kwota"] = float(match.group(2).replace(',', '.'))
+            result["suma_brutto"] = float(match.group(3).replace(',', '.'))
 
-        # Dodaj główną pozycję
-        result["pozycje"].append({
-            "nazwa": "Energia elektryczna - faktyczne zużycie",
-            "wartosc_netto": netto,
-            "kategoria": "sprzedaz"
-        })
+    # TAURON/generyczny: "Do zapłaty NETTO VAT BRUTTO"
+    if result["suma_netto"] == 0:
+        match = re.search(r'Do\s+zapłaty\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)', text)
+        if match:
+            n = float(match.group(1).replace(',', '.'))
+            v = float(match.group(2).replace(',', '.'))
+            b = float(match.group(3).replace(',', '.'))
+            if abs((n + v) - b) < 1.0:
+                result["suma_netto"] = n
+                result["vat_kwota"] = v
+                result["suma_brutto"] = b
 
-    # Szukamy zużycia w kWh
-    # Może być w różnych formatach
-    match = re.search(r'(\d+)\s*kWh', text, re.IGNORECASE)
-    if match:
-        result["zuzycie_kwh"] = float(match.group(1))
-
-    # Alternatywnie szukamy w tabeli zużycia
-    match = re.search(r'Energia elektryczna.*?(\d+)\s+kWh', text, re.IGNORECASE | re.DOTALL)
-    if match and result["zuzycie_kwh"] == 0:
-        result["zuzycie_kwh"] = float(match.group(1))
+    # Zużycie kWh
+    consumption_patterns = [
+        r'Łączne\s+zużycie\s+energii\s+(\d+)\s*kWh',
+        r'Zużycie:?\s*(\d+)\s*kWh',
+        r'Zużycie\s+energii\s+elektrycznej.*?([\d.]+)\s*kWh',
+        r'(\d+)\s*kWh',
+    ]
+    for p in consumption_patterns:
+        match = re.search(p, text, re.IGNORECASE)
+        if match:
+            val_str = match.group(1).replace(' ', '')
+            # Obsługa separatora tysięcy (2.359 = 2359)
+            if re.match(r'^\d{1,3}\.\d{3}$', val_str):
+                val_str = val_str.replace('.', '')
+            val = float(val_str)
+            if 50 <= val <= 100000:
+                result["zuzycie_kwh"] = val
+                break
 
     return result
 

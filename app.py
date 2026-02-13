@@ -201,6 +201,7 @@ def calculate_savings(invoice_data):
             'percent': round(savings_percent, 1)
         },
         'metadata': {
+            'sprzedawca': invoice_data.get('sprzedawca', ''),
             'numer_faktury': invoice_data.get('numer_faktury', ''),
             'data_faktury': invoice_data.get('data_faktury', ''),
             'okres_rozliczeniowy': invoice_data.get('okres_rozliczeniowy', ''),
