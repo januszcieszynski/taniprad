@@ -669,6 +669,30 @@ analyzeBtn.addEventListener('click', async () => {
 
 // Wyświetlanie wyników
 function displayResults(data) {
+  // Sprawdź typ dokumentu
+  if (data.typ_dokumentu === 'prognoza') {
+    // Wyświetl informację o prognozie
+    alert(
+      '📊 Wykryto prognozę zużycia energii\n\n' +
+      data.info + '\n\n' +
+      'Sprzedawca: ' + (data.dane_prognozy?.sprzedawca || 'Nie rozpoznano') + '\n' +
+      'Okres: ' + (data.dane_prognozy?.okres_rozliczeniowy || 'Nie rozpoznano')
+    );
+
+    // Pokaż ponownie upload
+    uploadSection.classList.remove('hidden');
+    resultsSection.classList.remove('visible');
+    return;
+  }
+
+  // Bezpieczne sprawdzanie - na wypadek gdyby dane były niepełne
+  if (!data.savings || !data.before || !data.after) {
+    alert('Błąd: Niepełne dane z serwera. Spróbuj ponownie lub użyj innej faktury.');
+    uploadSection.classList.remove('hidden');
+    resultsSection.classList.remove('visible');
+    return;
+  }
+
   // Metadata - bezpieczne sprawdzanie
   const meta = data.metadata || {};
   const metadata = document.getElementById('metadata');
