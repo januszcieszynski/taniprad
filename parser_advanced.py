@@ -394,6 +394,12 @@ class InvoiceParser:
             if tauron_meta:
                 return tauron_meta
 
+        # ENEA: "FAKTURA VAT NR P/24281058/0001/26 - ORYGINAŁ"
+        if provider == 'enea':
+            enea_meta = self._parse_metadata_enea(text)
+            if enea_meta:
+                return enea_meta
+
         # Numer faktury
         patterns = [
             # PGE: FAKTURA VAT NR  81304134/97R/2025
@@ -480,6 +486,33 @@ class InvoiceParser:
 
         return metadata if metadata else None
 
+    def _parse_metadata_enea(self, text: str) -> Optional[Dict]:
+        """Parsuje metadane z faktury ENEA.
+        Format: 'FAKTURA VAT NR P/24281058/0001/26 - ORYGINAŁ'
+        Data sprzedaży: 24/01/2026
+        Data wystawienia: 26/01/2026
+        Za okres od 24/12/2025 do 24/01/2026 (na str. 2)
+        """
+        metadata = {}
+        date_pattern = r'\d{2}/\d{2}/\d{4}'
+
+        # Numer faktury ENEA: P/XXXXXXXX/XXXX/XX
+        match = re.search(r'FAKTURA\s+VAT\s+NR\s+(P/[\w/]+)\s*[-–]', text, re.IGNORECASE)
+        if match:
+            metadata['numer_faktury'] = match.group(1).strip()
+
+        # Data wystawienia
+        match = re.search(rf'Data\s+wystawienia:?\s*({date_pattern})', text, re.IGNORECASE)
+        if match:
+            metadata['data_faktury'] = match.group(1)
+
+        # Okres rozliczeniowy — na str. 2: "Za okres od 24/12/2025 do 24/01/2026"
+        match = re.search(rf'[Zz]a\s+okres\s+od\s+({date_pattern})\s+do\s+({date_pattern})', text)
+        if match:
+            metadata['okres_rozliczeniowy'] = f"{match.group(1)} - {match.group(2)}"
+
+        return metadata if metadata else None
+
     def _parse_items(self, tables: List, text: str, provider: str) -> List[Dict]:
         """Parsuje pozycje faktury — dispatcher wg dostawcy"""
         if provider == 'pge':
@@ -489,6 +522,8 @@ class InvoiceParser:
             return self._parse_items_pge(tables, text)
         elif provider == 'tauron':
             return self._parse_items_tauron(tables, text)
+        elif provider == 'enea':
+            return self._parse_items_enea(tables, text)
         else:
             return self._parse_items_generic(tables, text)
 
@@ -763,6 +798,150 @@ class InvoiceParser:
 
         return items
 
+    def _parse_items_enea(self, tables: List, text: str) -> List[Dict]:
+        """Parsuje pozycje z faktury ENEA.
+
+        ENEA na str. 2 zawiera dwie sekcje w tekście płaskim:
+        - "ROZLICZENIE - SPRZEDAŻ ENERGII"
+        - "ROZLICZENIE - USŁUGA DYSTRYBUCJI ENERGII"
+
+        pdfplumber nie tworzy tu użytecznych tabel — parsujemy z tekstu.
+        """
+        return self._parse_items_enea_text(text)
+
+    def _parse_items_enea_text(self, text: str) -> List[Dict]:
+        """Parsuje pozycje ENEA bezpośrednio z tekstu (główna ścieżka).
+
+        ENEA format tekstu (str. 2) — tekst jest płaski, linia po linii:
+          ROZLICZENIE - SPRZEDAŻ ENERGII
+          Energia elektryczna czynna          <- nazwa pozycji (nagłówek podgrupy)
+          całodobowa kWh 115 0,5050 58,08 23  <- dane: strefa j.m. ilość cena netto VAT%
+          całodobowa kWh 344 0,5030 173,03 23
+          Ogółem wartość - sprzedaż energii: 231,11
+
+          ROZLICZENIE - USŁUGA DYSTRYBUCJI ENERGII
+          Opłata stała sieciowa - układ 3-fazowy  <- nazwa pozycji
+          zł/mc 31/12/2025 0 10,1400 0,00 23       <- dane: j.m. data ilość cena netto VAT%
+          zł/mc 24/01/2026 1 10,4100 10,41 23
+          Opłata zmienna sieciowa
+          całodobowa kWh 31/12/2025 115 0,2456 28,24 23
+          ...
+
+        Reguła ekstrakcji wartości netto:
+          Linia danych kończy się: ... <cena_jedn(4 miejsca)> <netto> <VAT%>
+          VAT% = liczba całkowita (23). Netto = przedostatnia liczba w linii.
+          Wartości 0,00 pomijamy (pozycje bez naliczenia).
+        """
+        aggregated = {}
+        lines = text.split('\n')
+        current_section = None
+        current_subname = None
+
+        # Słowa kluczowe nagłówków tabel do pominięcia
+        header_skip = {
+            'opis', 'strefa', 'j. m', 'j.m', 'cena jedn', 'należność', 'stawka vat',
+            'tg fi', 'współczynniki', 'ilość m-cy', 'mnożna', 'wskazanie', 'sposób',
+            'licznik', 'odczyty', 'ilość\nm-cy',
+        }
+
+        # Wzorzec linii danych ENEA:
+        # "całodobowa kWh 115 0,5050 58,08 23"
+        # "zł/mc 31/12/2025 0 10,1400 0,00 23"
+        # "zł/mc 24/01/2026 1 10,4100 10,41 23"
+        # "dzienna kWh 12 0,6865 8,24 23"
+        data_line_re = re.compile(
+            r'^(?:całodobowa|dzienna|nocna|zł/mc)\s',
+            re.IGNORECASE
+        )
+
+        for line in lines:
+            line_stripped = line.strip()
+            line_lower = line_stripped.lower()
+
+            if not line_stripped:
+                continue
+
+            # Detekcja sekcji
+            if 'rozliczenie - sprzedaż energii' in line_lower:
+                current_section = 'sprzedaz'
+                current_subname = None
+                continue
+            elif 'rozliczenie - usługa dystrybucji' in line_lower:
+                current_section = 'dystrybucja'
+                current_subname = None
+                continue
+
+            # Koniec sekcji
+            if 'ogółem wartość' in line_lower or 'zużycie:' in line_lower:
+                current_subname = None
+                continue
+
+            if not current_section:
+                continue
+
+            # Pomiń nagłówki kolumn
+            if any(kw in line_lower for kw in header_skip):
+                continue
+
+            # Linia danych (zaczyna się od strefy lub jednostki)
+            if data_line_re.match(line_stripped):
+                if not current_subname:
+                    continue
+
+                # Wyciągnij wszystkie liczby zmiennoprzecinkowe (z przecinkiem)
+                numbers_float = re.findall(r'\d+,\d+', line_stripped)
+                if not numbers_float:
+                    continue
+
+                # Przedostatnia liczba z przecinkiem = należność netto
+                # Ostatnia = cena jednostkowa (ma 4 miejsca po przecinku) LUB netto jeśli tylko 1
+                # Format: ... <cena_jedn>,<4 cyfry> <netto>,<2 cyfry> <VAT_int>
+                # Lub gdy cena jednostkowa i netto są blisko siebie:
+                # Sprawdź czy ostatnia liczba wygląda jak cena jednostkowa (>= 4 cyfry po przecinku)
+                if len(numbers_float) >= 2:
+                    last = numbers_float[-1]
+                    second_last = numbers_float[-2]
+                    # Cena jedn. ma 4 miejsc po przecinku
+                    if re.search(r',\d{4}$', last):
+                        # last = cena_jedn, second_last = netto (ale to niemożliwe — cena jest przed netto)
+                        netto_val = self._clean_number(second_last)
+                    elif re.search(r',\d{4}$', second_last):
+                        # second_last = cena_jedn, last = netto
+                        netto_val = self._clean_number(last)
+                    else:
+                        # Standardowo: ostatnia = netto
+                        netto_val = self._clean_number(last)
+                else:
+                    netto_val = self._clean_number(numbers_float[-1])
+
+                if netto_val <= 0:
+                    continue
+
+                norm_name = self._normalize_item_name(current_subname)
+                if norm_name in aggregated:
+                    aggregated[norm_name]['netto'] += netto_val
+                else:
+                    aggregated[norm_name] = {'netto': netto_val, 'kategoria': current_section}
+
+            elif len(line_stripped) >= 3:
+                # Linia nagłówkowa — nazwa pozycji (np. "Energia elektryczna czynna",
+                # "Opłata stała sieciowa - układ 3-fazowy", "Opłata mocowa > 2800 kWh")
+                # Wyklucz akcyzę i inne informacyjne linie
+                if any(kw in line_lower for kw in ['akcyz', 'naliczon', 'informuj', 'wynika', 'str.', 'kod ppe',
+                                                    'nr kontrahenta', 'energia zużyta', 'analogiczn', 'licznik',
+                                                    'fizyczny', 'wskazanie', 'mnożna']):
+                    continue
+                # Pomiń linie zaczynające się od daty (DD/MM/YYYY)
+                if re.match(r'^\d{2}/\d{2}/\d{4}', line_stripped):
+                    continue
+                current_subname = line_stripped
+
+        return [
+            {'nazwa': n, 'wartosc_netto': round(d['netto'], 2), 'kategoria': d['kategoria']}
+            for n, d in aggregated.items()
+            if d['netto'] > 0
+        ]
+
     def _parse_items_generic(self, tables: List, text: str) -> List[Dict]:
         """Parsuje pozycje z generycznej faktury (E.ON i inne)"""
         items = []
@@ -884,18 +1063,19 @@ class InvoiceParser:
         name = name.strip()
         name_lower = name.lower()
 
-        # Mapowanie skrótów PGE na standardowe nazwy
+        # Mapowanie skrótów PGE/ENEA na standardowe nazwy
         mappings = [
             (['opł.za energię czynną', 'opł. za energię czynną'], 'Energia czynna'),
             (['opłata kogeneracyjna'], 'Opłata kogeneracyjna'),
             (['opłata oze'], 'Opłata OZE'),
-            (['opł.jakościowa', 'opł. jakościowa', 'stawka jakościowa'], 'Opłata jakościowa'),
-            (['opł.sieciowa zmienna', 'opł. sieciowa zmienna', 'składnik zmienny'], 'Opłata sieciowa zmienna'),
-            (['opł.stała staw. sieciowej', 'opł. stała staw. sieciowej', 'składnik stały stawki sieciowej', 'składnik stały'], 'Opłata stała sieciowa'),
+            (['opł.jakościowa', 'opł. jakościowa', 'stawka jakościowa', 'opłata jakościowa'], 'Opłata jakościowa'),
+            (['opł.sieciowa zmienna', 'opł. sieciowa zmienna', 'składnik zmienny', 'opłata zmienna sieciowa'], 'Opłata sieciowa zmienna'),
+            (['opł.stała staw. sieciowej', 'opł. stała staw. sieciowej', 'składnik stały stawki sieciowej',
+              'składnik stały', 'opłata stała sieciowa'], 'Opłata stała sieciowa'),
             (['opłata abonamentowa', 'stawka opłaty abonamentowej'], 'Opłata abonamentowa'),
             (['opłata przejściowa', 'stawka opłaty przejściowej'], 'Opłata przejściowa'),
             (['opł. moc. stała', 'opł.moc. stała', 'opłata mocowa'], 'Opłata mocowa'),
-            (['energia elektryczna czynna'], 'Energia czynna'),
+            (['energia elektryczna czynna', 'energia czynna'], 'Energia czynna'),
             (['opłata handlowa'], 'Opłata handlowa'),
         ]
 
@@ -935,6 +1115,8 @@ class InvoiceParser:
             return self._parse_totals_pge(text, tables)
         elif provider == 'tauron':
             return self._parse_totals_tauron(text, tables)
+        elif provider == 'enea':
+            return self._parse_totals_enea(text, tables)
 
         # Generyczny fallback — szukaj w tabelach
         return self._parse_totals_generic(text, tables)
@@ -1077,6 +1259,69 @@ class InvoiceParser:
 
         return self._parse_totals_generic(text, tables)
 
+    def _parse_totals_enea(self, text: str, tables: List) -> Dict:
+        """Parsuje sumy z faktury ENEA.
+
+        ENEA format:
+        'Wynik rozliczenia w rozbiciu na stawki VAT:'
+        'Wartość netto  Stawka VAT  Kwota VAT  Wartość brutto'
+        '401,51         23          92,35       493,86'
+        'PODSUMOWANIE: 401,51  92,35  493,86'
+        'Do zapłaty: 493,86 zł'
+        """
+        totals = {}
+        date_pattern = r'\d{2}/\d{2}/\d{4}'
+
+        # Metoda 1: szukaj wiersza "PODSUMOWANIE:" w tekście
+        match = re.search(
+            r'PODSUMOWANIE:\s*([\d,]+)\s+([\d,]+)\s+([\d,]+)',
+            text, re.IGNORECASE
+        )
+        if match:
+            n = self._clean_number(match.group(1))
+            v = self._clean_number(match.group(2))
+            b = self._clean_number(match.group(3))
+            if b > 0 and abs((n + v) - b) < 1.0:
+                totals['suma_netto'] = n
+                totals['vat_kwota'] = v
+                totals['suma_brutto'] = b
+                totals['vat_procent'] = 23
+                return totals
+
+        # Metoda 2: szukaj tabeli "Wynik rozliczenia w rozbiciu na stawki VAT"
+        for table in tables:
+            if not table:
+                continue
+            for row in table:
+                if not row:
+                    continue
+                row_text = ' '.join([str(cell) for cell in row if cell])
+                row_lower = row_text.lower()
+                if 'podsumowanie' in row_lower or 'wynik rozliczenia' in row_lower:
+                    numbers = [self._clean_number(str(c)) for c in row if c and self._clean_number(str(c)) > 0]
+                    # Szukaj trójki netto+vat=brutto
+                    for i in range(len(numbers) - 2):
+                        n, v, b = numbers[i], numbers[i + 1], numbers[i + 2]
+                        if abs((n + v) - b) < 1.0 and b > 10:
+                            totals['suma_netto'] = n
+                            totals['vat_kwota'] = v
+                            totals['suma_brutto'] = b
+                            totals['vat_procent'] = 23
+                            return totals
+
+        # Metoda 3: "Do zapłaty: 493,86 zł"
+        match = re.search(r'Do\s+zapłaty:\s*([\d,]+)\s*zł', text, re.IGNORECASE)
+        if match:
+            brutto = self._clean_number(match.group(1))
+            if brutto > 0:
+                totals['suma_brutto'] = brutto
+                totals['suma_netto'] = round(brutto / 1.23, 2)
+                totals['vat_kwota'] = round(brutto - totals['suma_netto'], 2)
+                totals['vat_procent'] = 23
+                return totals
+
+        return self._parse_totals_generic(text, tables)
+
     def _parse_totals_generic(self, text: str, tables: List) -> Dict:
         """Generyczny parser sum z tabel"""
         totals = {}
@@ -1119,6 +1364,13 @@ class InvoiceParser:
             specific_patterns = [
                 # PGE: "Zużycie energii elektrycznej za 2024 rok 2.359 kWh" (separator tysięcy!)
                 r'Zużycie\s+energii\s+elektrycznej.*?([\d.]+)\s*kWh',
+            ]
+        elif provider == 'enea':
+            specific_patterns = [
+                # ENEA: "Ogółem zużycie: 459 kWh"
+                r'Ogółem\s+zużycie:\s*(\d+)\s*kWh',
+                # ENEA str.2: "Zużycie: 459 kWh"
+                r'Zużycie:\s*(\d+)\s*kWh',
             ]
 
         for pattern in specific_patterns:
